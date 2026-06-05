@@ -124,10 +124,14 @@ function App() {
 
   function saveProjectDetails(event) {
     event.preventDefault();
-    updateSelectedProject({
+    const savedProject = {
       ...selectedProject,
       ...projectDraft,
       progress: Number(projectDraft.progress) || 0
+    };
+    updateSelectedProject({
+      ...savedProject,
+      progress: calculateAutoProgress(savedProject)
     });
   }
 
@@ -151,12 +155,20 @@ function App() {
   }
 
   function toggleTask(taskId) {
-    updateSelectedProject((project) => ({
-      ...project,
-      tasks: project.tasks.map((task) =>
+    updateSelectedProject((project) => {
+      const updatedProject = {
+        ...project,
+        tasks: project.tasks.map((task) =>
         task.id === taskId ? { ...task, isComplete: !task.isComplete } : task
       )
-    }));
+      };
+
+      return {
+        ...updatedProject,
+        progress: calculateAutoProgress(updatedProject),
+        lastUpdate: "Progress recalculated from deliverables"
+      };
+    });
   }
 
   function deleteTask(taskId) {
@@ -189,11 +201,18 @@ function App() {
       });
     }
 
-    updateSelectedProject((project) => ({
-      ...project,
-      files: [...uploadedFiles, ...project.files],
-      lastUpdate: `${uploadedFiles.length} file${uploadedFiles.length === 1 ? "" : "s"} submitted`
-    }));
+    updateSelectedProject((project) => {
+      const updatedProject = {
+        ...project,
+        files: [...uploadedFiles, ...project.files],
+        lastUpdate: `${uploadedFiles.length} file${uploadedFiles.length === 1 ? "" : "s"} submitted`
+      };
+
+      return {
+        ...updatedProject,
+        progress: calculateAutoProgress(updatedProject)
+      };
+    });
     setFileNote("");
     setPendingFiles([]);
     if (fileInputRef.current) fileInputRef.current.value = "";
@@ -213,10 +232,18 @@ function App() {
 
   async function deleteFile(fileId) {
     await deleteFileBlob(fileId);
-    updateSelectedProject((project) => ({
-      ...project,
-      files: project.files.filter((file) => file.id !== fileId)
-    }));
+    updateSelectedProject((project) => {
+      const updatedProject = {
+        ...project,
+        files: project.files.filter((file) => file.id !== fileId),
+        lastUpdate: "File removed"
+      };
+
+      return {
+        ...updatedProject,
+        progress: calculateAutoProgress(updatedProject)
+      };
+    });
   }
 
   if (!selectedProject || !projectDraft) {
@@ -402,6 +429,10 @@ function ProjectOverview({ draft, setDraft, onSave, taskCompletion }) {
           onChange={(event) => setDraft({ ...draft, progress: event.target.value })}
         />
       </label>
+      <p className="auto-progress-note wide">
+        Progress auto-updates from completed deliverables plus submitted files. Saving project details also
+        recalculates it.
+      </p>
       <label className="wide">
         <span>Engineering Notes</span>
         <textarea
@@ -554,6 +585,17 @@ function readProjects() {
   } catch {
     return [];
   }
+}
+
+function calculateAutoProgress(project) {
+  const tasks = project.tasks || [];
+  const files = project.files || [];
+  const taskScore = tasks.length
+    ? Math.round((tasks.filter((task) => task.isComplete).length / tasks.length) * 70)
+    : 0;
+  const fileScore = Math.min(files.length * 6, 30);
+
+  return Math.min(100, taskScore + fileScore);
 }
 
 function openFileDb() {

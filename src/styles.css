@@ -327,6 +327,13 @@ textarea:focus {
   font-weight: 800;
 }
 
+.auto-progress-note {
+  margin: -4px 0 0;
+  color: #60716a;
+  font-size: 0.9rem;
+  line-height: 1.5;
+}
+
 .progress-comparison div {
   height: 10px;
   overflow: hidden;
