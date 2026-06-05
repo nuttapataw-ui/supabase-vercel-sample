@@ -1,304 +1,585 @@
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import { createRoot } from "react-dom/client";
-import { createClient } from "@supabase/supabase-js";
 import {
-  AlertCircle,
   CalendarDays,
   Check,
+  ChevronRight,
   Circle,
-  Cloud,
-  Database,
-  ListChecks,
+  Download,
+  FileText,
+  FolderKanban,
+  Gauge,
+  HardHat,
   Plus,
-  RefreshCw,
-  Trash2
+  Save,
+  Trash2,
+  Upload
 } from "lucide-react";
 import "./styles.css";
 
-const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
-const supabaseKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
-const localStorageKey = "taskflow.tasks";
+const projectStorageKey = "engtrack.projects";
+const selectedProjectKey = "engtrack.selectedProject";
+const fileDbName = "engtrack-files";
+const fileStoreName = "files";
+
+const starterProject = {
+  id: "demo-project",
+  name: "Warehouse Extension",
+  client: "Internal Engineering",
+  stage: "Design",
+  status: "On Track",
+  progress: 42,
+  startDate: "2026-06-01",
+  targetDate: "2026-08-30",
+  notes: "Track drawings, site reports, RFIs, procurement notes, and handover files in one workspace.",
+  tasks: [
+    {
+      id: crypto.randomUUID(),
+      title: "Approve structural calculation package",
+      owner: "Engineering",
+      dueDate: "2026-06-14",
+      isComplete: false
+    },
+    {
+      id: crypto.randomUUID(),
+      title: "Issue revised foundation drawing",
+      owner: "Design",
+      dueDate: "2026-06-18",
+      isComplete: true
+    }
+  ],
+  files: []
+};
 
 function App() {
-  const supabase = useMemo(() => {
-    if (!supabaseUrl || !supabaseKey) return null;
-    return createClient(supabaseUrl, supabaseKey);
-  }, []);
-
-  const [tasks, setTasks] = useState([]);
-  const [title, setTitle] = useState("");
-  const [priority, setPriority] = useState("medium");
-  const [dueDate, setDueDate] = useState("");
-  const [filter, setFilter] = useState("active");
-  const [status, setStatus] = useState({
-    type: supabase ? "syncing" : "local",
-    text: supabase ? "Connecting to Supabase" : "Local device storage"
-  });
+  const [projects, setProjects] = useState([]);
+  const [selectedProjectId, setSelectedProjectId] = useState("");
+  const [projectDraft, setProjectDraft] = useState(null);
+  const [taskTitle, setTaskTitle] = useState("");
+  const [taskOwner, setTaskOwner] = useState("");
+  const [taskDueDate, setTaskDueDate] = useState("");
+  const [fileNote, setFileNote] = useState("");
+  const [activeView, setActiveView] = useState("overview");
+  const fileInputRef = useRef(null);
 
   useEffect(() => {
-    loadTasks();
+    const savedProjects = readProjects();
+    const initialProjects = savedProjects.length ? savedProjects : [starterProject];
+    const savedSelectedId = localStorage.getItem(selectedProjectKey);
+    const initialSelectedId = initialProjects.some((project) => project.id === savedSelectedId)
+      ? savedSelectedId
+      : initialProjects[0].id;
+
+    setProjects(initialProjects);
+    setSelectedProjectId(initialSelectedId);
   }, []);
 
-  async function loadTasks() {
-    if (!supabase) {
-      setTasks(readLocalTasks());
-      return;
+  const selectedProject = useMemo(
+    () => projects.find((project) => project.id === selectedProjectId) || projects[0],
+    [projects, selectedProjectId]
+  );
+
+  useEffect(() => {
+    if (selectedProject) {
+      setProjectDraft({ ...selectedProject });
+      localStorage.setItem(selectedProjectKey, selectedProject.id);
     }
+  }, [selectedProject?.id]);
 
-    setStatus({ type: "syncing", text: "Syncing tasks" });
-
-    const { data, error } = await supabase.from("tasks").select("*").order("created_at", {
-      ascending: false
-    });
-
-    if (error) {
-      setTasks(readLocalTasks());
-      setStatus({
-        type: "error",
-        text: "Supabase needs the tasks table. Using local storage."
-      });
-      return;
-    }
-
-    setTasks(data || []);
-    setStatus({ type: "online", text: "Supabase connected" });
+  function persistProjects(nextProjects) {
+    setProjects(nextProjects);
+    localStorage.setItem(projectStorageKey, JSON.stringify(nextProjects));
   }
 
-  async function addTask(event) {
-    event.preventDefault();
+  function updateSelectedProject(updater) {
+    const nextProjects = projects.map((project) => {
+      if (project.id !== selectedProject.id) return project;
+      return typeof updater === "function" ? updater(project) : updater;
+    });
+    persistProjects(nextProjects);
+  }
 
-    const cleanTitle = title.trim();
-    if (!cleanTitle) return;
-
-    const newTask = {
+  function createProject() {
+    const project = {
       id: crypto.randomUUID(),
-      title: cleanTitle,
-      priority,
-      due_date: dueDate || null,
-      is_complete: false,
-      created_at: new Date().toISOString()
+      name: "New Engineering Project",
+      client: "",
+      stage: "Planning",
+      status: "On Track",
+      progress: 0,
+      startDate: new Date().toISOString().slice(0, 10),
+      targetDate: "",
+      notes: "",
+      tasks: [],
+      files: []
     };
 
-    setTitle("");
-    setDueDate("");
+    persistProjects([project, ...projects]);
+    setSelectedProjectId(project.id);
+    setActiveView("overview");
+  }
 
-    if (!supabase || status.type === "error") {
-      updateLocalTasks([newTask, ...tasks]);
-      return;
+  function saveProjectDetails(event) {
+    event.preventDefault();
+    updateSelectedProject({
+      ...selectedProject,
+      ...projectDraft,
+      progress: Number(projectDraft.progress) || 0
+    });
+  }
+
+  function addTask(event) {
+    event.preventDefault();
+    const cleanTitle = taskTitle.trim();
+    if (!cleanTitle) return;
+
+    const task = {
+      id: crypto.randomUUID(),
+      title: cleanTitle,
+      owner: taskOwner.trim() || "Unassigned",
+      dueDate: taskDueDate || "",
+      isComplete: false
+    };
+
+    updateSelectedProject((project) => ({ ...project, tasks: [task, ...project.tasks] }));
+    setTaskTitle("");
+    setTaskOwner("");
+    setTaskDueDate("");
+  }
+
+  function toggleTask(taskId) {
+    updateSelectedProject((project) => ({
+      ...project,
+      tasks: project.tasks.map((task) =>
+        task.id === taskId ? { ...task, isComplete: !task.isComplete } : task
+      )
+    }));
+  }
+
+  function deleteTask(taskId) {
+    updateSelectedProject((project) => ({
+      ...project,
+      tasks: project.tasks.filter((task) => task.id !== taskId)
+    }));
+  }
+
+  async function uploadFiles(event) {
+    const files = Array.from(event.target.files || []);
+    if (!files.length) return;
+
+    const uploadedFiles = [];
+
+    for (const file of files) {
+      const id = crypto.randomUUID();
+      await saveFileBlob(id, file);
+      uploadedFiles.push({
+        id,
+        name: file.name,
+        size: file.size,
+        type: file.type || "Unknown",
+        note: fileNote.trim(),
+        uploadedAt: new Date().toISOString()
+      });
     }
 
-    const { data, error } = await supabase.from("tasks").insert(newTask).select().single();
-
-    if (error) {
-      setStatus({ type: "error", text: "Could not save to Supabase. Saved locally." });
-      updateLocalTasks([newTask, ...tasks]);
-      return;
-    }
-
-    setTasks([data, ...tasks]);
+    updateSelectedProject((project) => ({ ...project, files: [...uploadedFiles, ...project.files] }));
+    setFileNote("");
+    event.target.value = "";
   }
 
-  async function toggleTask(task) {
-    const updated = { ...task, is_complete: !task.is_complete };
-    applyTaskUpdate(updated);
+  async function downloadFile(file) {
+    const blob = await getFileBlob(file.id);
+    if (!blob) return;
 
-    if (supabase && status.type !== "error") {
-      const { error } = await supabase
-        .from("tasks")
-        .update({ is_complete: updated.is_complete })
-        .eq("id", task.id);
-
-      if (error) setStatus({ type: "error", text: "Update failed in Supabase. Local changes remain." });
-    }
+    const url = URL.createObjectURL(blob);
+    const anchor = document.createElement("a");
+    anchor.href = url;
+    anchor.download = file.name;
+    anchor.click();
+    URL.revokeObjectURL(url);
   }
 
-  async function deleteTask(task) {
-    const nextTasks = tasks.filter((item) => item.id !== task.id);
-    updateTasks(nextTasks);
-
-    if (supabase && status.type !== "error") {
-      const { error } = await supabase.from("tasks").delete().eq("id", task.id);
-      if (error) setStatus({ type: "error", text: "Delete failed in Supabase. Local changes remain." });
-    }
+  async function deleteFile(fileId) {
+    await deleteFileBlob(fileId);
+    updateSelectedProject((project) => ({
+      ...project,
+      files: project.files.filter((file) => file.id !== fileId)
+    }));
   }
 
-  function applyTaskUpdate(updatedTask) {
-    updateTasks(tasks.map((task) => (task.id === updatedTask.id ? updatedTask : task)));
+  if (!selectedProject || !projectDraft) {
+    return null;
   }
 
-  function updateLocalTasks(nextTasks) {
-    localStorage.setItem(localStorageKey, JSON.stringify(nextTasks));
-    setTasks(nextTasks);
-    setStatus({ type: "local", text: "Local device storage" });
-  }
-
-  function updateTasks(nextTasks) {
-    if (!supabase || status.type === "error" || status.type === "local") {
-      localStorage.setItem(localStorageKey, JSON.stringify(nextTasks));
-    }
-
-    setTasks(nextTasks);
-  }
-
-  const visibleTasks = tasks.filter((task) => {
-    if (filter === "active") return !task.is_complete;
-    if (filter === "done") return task.is_complete;
-    return true;
-  });
-
-  const completedCount = tasks.filter((task) => task.is_complete).length;
-  const activeCount = tasks.length - completedCount;
+  const completedTasks = selectedProject.tasks.filter((task) => task.isComplete).length;
+  const taskCompletion = selectedProject.tasks.length
+    ? Math.round((completedTasks / selectedProject.tasks.length) * 100)
+    : 0;
 
   return (
     <main className="app-shell">
       <section className="workspace">
-        <header className="topbar">
-          <div>
-            <p className="eyebrow">Task Tracker</p>
-            <h1>TaskFlow</h1>
-          </div>
-          <SyncStatus status={status} onRefresh={loadTasks} />
-        </header>
-
-        <section className="summary-grid" aria-label="Task summary">
-          <SummaryCard label="Active" value={activeCount} tone="green" />
-          <SummaryCard label="Done" value={completedCount} tone="blue" />
-          <SummaryCard label="Total" value={tasks.length} tone="orange" />
-        </section>
-
-        <form className="task-form" onSubmit={addTask}>
-          <label className="title-field">
-            <span>Task</span>
-            <input
-              value={title}
-              onChange={(event) => setTitle(event.target.value)}
-              placeholder="Add a new task"
-              maxLength={120}
-            />
-          </label>
-
-          <label>
-            <span>Priority</span>
-            <select value={priority} onChange={(event) => setPriority(event.target.value)}>
-              <option value="low">Low</option>
-              <option value="medium">Medium</option>
-              <option value="high">High</option>
-            </select>
-          </label>
-
-          <label>
-            <span>Due</span>
-            <input type="date" value={dueDate} onChange={(event) => setDueDate(event.target.value)} />
-          </label>
-
-          <button className="primary-button" type="submit">
-            <Plus aria-hidden="true" />
-            Add
-          </button>
-        </form>
-
-        <div className="filters" role="tablist" aria-label="Task filters">
-          {["active", "all", "done"].map((item) => (
-            <button
-              className={filter === item ? "selected" : ""}
-              key={item}
-              onClick={() => setFilter(item)}
-              type="button"
-            >
-              {item}
-            </button>
-          ))}
-        </div>
-
-        <section className="task-list" aria-label="Tasks">
-          {visibleTasks.length === 0 ? (
-            <div className="empty-state">
-              <ListChecks aria-hidden="true" />
-              <p>No tasks in this view.</p>
+        <aside className="sidebar">
+          <div className="brand">
+            <HardHat aria-hidden="true" />
+            <div>
+              <p>Engineering</p>
+              <h1>ProjectTrack</h1>
             </div>
-          ) : (
-            visibleTasks.map((task) => (
-              <TaskItem key={task.id} task={task} onToggle={toggleTask} onDelete={deleteTask} />
-            ))
-          )}
+          </div>
+
+          <button className="new-project-button" type="button" onClick={createProject}>
+            <Plus aria-hidden="true" />
+            New Project
+          </button>
+
+          <div className="project-list">
+            {projects.map((project) => (
+              <button
+                className={project.id === selectedProject.id ? "selected" : ""}
+                key={project.id}
+                type="button"
+                onClick={() => setSelectedProjectId(project.id)}
+              >
+                <FolderKanban aria-hidden="true" />
+                <span>{project.name}</span>
+                <ChevronRight aria-hidden="true" />
+              </button>
+            ))}
+          </div>
+        </aside>
+
+        <section className="main-panel">
+          <header className="topbar">
+            <div>
+              <p className="eyebrow">{selectedProject.client || "Project Workspace"}</p>
+              <h2>{selectedProject.name}</h2>
+            </div>
+            <div className={`status-pill ${selectedProject.status.toLowerCase().replaceAll(" ", "-")}`}>
+              {selectedProject.status}
+            </div>
+          </header>
+
+          <section className="summary-grid" aria-label="Project summary">
+            <SummaryCard icon={<Gauge />} label="Project Progress" value={`${selectedProject.progress}%`} />
+            <SummaryCard icon={<Check />} label="Task Completion" value={`${taskCompletion}%`} />
+            <SummaryCard icon={<FileText />} label="Files Uploaded" value={selectedProject.files.length} />
+          </section>
+
+          <nav className="view-tabs" aria-label="Project views">
+            {["overview", "tasks", "files"].map((view) => (
+              <button
+                className={activeView === view ? "selected" : ""}
+                key={view}
+                type="button"
+                onClick={() => setActiveView(view)}
+              >
+                {view}
+              </button>
+            ))}
+          </nav>
+
+          {activeView === "overview" ? (
+            <ProjectOverview
+              draft={projectDraft}
+              setDraft={setProjectDraft}
+              onSave={saveProjectDetails}
+              taskCompletion={taskCompletion}
+            />
+          ) : null}
+
+          {activeView === "tasks" ? (
+            <TaskTracker
+              tasks={selectedProject.tasks}
+              title={taskTitle}
+              owner={taskOwner}
+              dueDate={taskDueDate}
+              setTitle={setTaskTitle}
+              setOwner={setTaskOwner}
+              setDueDate={setTaskDueDate}
+              onAdd={addTask}
+              onToggle={toggleTask}
+              onDelete={deleteTask}
+            />
+          ) : null}
+
+          {activeView === "files" ? (
+            <FileTracker
+              files={selectedProject.files}
+              note={fileNote}
+              setNote={setFileNote}
+              inputRef={fileInputRef}
+              onUpload={uploadFiles}
+              onDownload={downloadFile}
+              onDelete={deleteFile}
+            />
+          ) : null}
         </section>
       </section>
     </main>
   );
 }
 
-function SummaryCard({ label, value, tone }) {
+function SummaryCard({ icon, label, value }) {
   return (
-    <article className={`summary-card ${tone}`}>
+    <article className="summary-card">
+      <div className="summary-icon">{icon}</div>
       <p>{label}</p>
       <strong>{value}</strong>
     </article>
   );
 }
 
-function SyncStatus({ status, onRefresh }) {
-  const Icon = status.type === "online" ? Database : status.type === "error" ? AlertCircle : Cloud;
-
+function ProjectOverview({ draft, setDraft, onSave, taskCompletion }) {
   return (
-    <div className={`sync-status ${status.type}`}>
-      <Icon aria-hidden="true" />
-      <span>{status.text}</span>
-      <button type="button" onClick={onRefresh} aria-label="Refresh tasks" title="Refresh tasks">
-        <RefreshCw aria-hidden="true" />
+    <form className="overview-grid" onSubmit={onSave}>
+      <label className="wide">
+        <span>Project Name</span>
+        <input value={draft.name} onChange={(event) => setDraft({ ...draft, name: event.target.value })} />
+      </label>
+      <label>
+        <span>Client / Owner</span>
+        <input value={draft.client} onChange={(event) => setDraft({ ...draft, client: event.target.value })} />
+      </label>
+      <label>
+        <span>Stage</span>
+        <select value={draft.stage} onChange={(event) => setDraft({ ...draft, stage: event.target.value })}>
+          <option>Planning</option>
+          <option>Design</option>
+          <option>Procurement</option>
+          <option>Construction</option>
+          <option>Commissioning</option>
+          <option>Handover</option>
+        </select>
+      </label>
+      <label>
+        <span>Status</span>
+        <select value={draft.status} onChange={(event) => setDraft({ ...draft, status: event.target.value })}>
+          <option>On Track</option>
+          <option>At Risk</option>
+          <option>Delayed</option>
+          <option>Completed</option>
+        </select>
+      </label>
+      <label>
+        <span>Start Date</span>
+        <input
+          type="date"
+          value={draft.startDate}
+          onChange={(event) => setDraft({ ...draft, startDate: event.target.value })}
+        />
+      </label>
+      <label>
+        <span>Target Date</span>
+        <input
+          type="date"
+          value={draft.targetDate}
+          onChange={(event) => setDraft({ ...draft, targetDate: event.target.value })}
+        />
+      </label>
+      <label className="wide">
+        <span>Progress: {draft.progress}%</span>
+        <input
+          type="range"
+          min="0"
+          max="100"
+          value={draft.progress}
+          onChange={(event) => setDraft({ ...draft, progress: event.target.value })}
+        />
+      </label>
+      <label className="wide">
+        <span>Engineering Notes</span>
+        <textarea
+          value={draft.notes}
+          onChange={(event) => setDraft({ ...draft, notes: event.target.value })}
+          rows="5"
+        />
+      </label>
+
+      <div className="progress-comparison wide">
+        <span>Task completion</span>
+        <div>
+          <i style={{ width: `${taskCompletion}%` }} />
+        </div>
+        <strong>{taskCompletion}%</strong>
+      </div>
+
+      <button className="primary-button" type="submit">
+        <Save aria-hidden="true" />
+        Save Project
       </button>
+    </form>
+  );
+}
+
+function TaskTracker({ tasks, title, owner, dueDate, setTitle, setOwner, setDueDate, onAdd, onToggle, onDelete }) {
+  return (
+    <section>
+      <form className="task-form" onSubmit={onAdd}>
+        <label className="title-field">
+          <span>Deliverable / Action</span>
+          <input
+            value={title}
+            onChange={(event) => setTitle(event.target.value)}
+            placeholder="Example: Submit revised MEP layout"
+            maxLength={140}
+          />
+        </label>
+        <label>
+          <span>Owner</span>
+          <input value={owner} onChange={(event) => setOwner(event.target.value)} placeholder="Team / person" />
+        </label>
+        <label>
+          <span>Due</span>
+          <input type="date" value={dueDate} onChange={(event) => setDueDate(event.target.value)} />
+        </label>
+        <button className="primary-button" type="submit">
+          <Plus aria-hidden="true" />
+          Add
+        </button>
+      </form>
+
+      <div className="task-list">
+        {tasks.length ? (
+          tasks.map((task) => (
+            <article className={`task-item ${task.isComplete ? "complete" : ""}`} key={task.id}>
+              <button className="check-button" type="button" onClick={() => onToggle(task.id)}>
+                {task.isComplete ? <Check aria-hidden="true" /> : <Circle aria-hidden="true" />}
+              </button>
+              <div className="task-content">
+                <p>{task.title}</p>
+                <div className="task-meta">
+                  <span>{task.owner}</span>
+                  {task.dueDate ? (
+                    <span>
+                      <CalendarDays aria-hidden="true" />
+                      {formatDate(task.dueDate)}
+                    </span>
+                  ) : null}
+                </div>
+              </div>
+              <button className="delete-button" type="button" onClick={() => onDelete(task.id)}>
+                <Trash2 aria-hidden="true" />
+              </button>
+            </article>
+          ))
+        ) : (
+          <EmptyState text="No deliverables yet." />
+        )}
+      </div>
+    </section>
+  );
+}
+
+function FileTracker({ files, note, setNote, inputRef, onUpload, onDownload, onDelete }) {
+  return (
+    <section>
+      <div className="upload-zone">
+        <div>
+          <Upload aria-hidden="true" />
+          <h3>Upload engineering files</h3>
+          <p>Store drawings, reports, RFIs, inspection photos, schedules, and handover documents in this browser.</p>
+        </div>
+        <label>
+          <span>File Note</span>
+          <input value={note} onChange={(event) => setNote(event.target.value)} placeholder="Drawing, RFI, report..." />
+        </label>
+        <input ref={inputRef} type="file" multiple onChange={onUpload} />
+      </div>
+
+      <div className="file-list">
+        {files.length ? (
+          files.map((file) => (
+            <article className="file-item" key={file.id}>
+              <FileText aria-hidden="true" />
+              <div>
+                <p>{file.name}</p>
+                <span>
+                  {formatFileSize(file.size)} · {file.note || "No note"} · {formatDate(file.uploadedAt)}
+                </span>
+              </div>
+              <button type="button" onClick={() => onDownload(file)} aria-label="Download file" title="Download file">
+                <Download aria-hidden="true" />
+              </button>
+              <button type="button" onClick={() => onDelete(file.id)} aria-label="Delete file" title="Delete file">
+                <Trash2 aria-hidden="true" />
+              </button>
+            </article>
+          ))
+        ) : (
+          <EmptyState text="No files uploaded yet." />
+        )}
+      </div>
+    </section>
+  );
+}
+
+function EmptyState({ text }) {
+  return (
+    <div className="empty-state">
+      <FolderKanban aria-hidden="true" />
+      <p>{text}</p>
     </div>
   );
 }
 
-function TaskItem({ task, onToggle, onDelete }) {
-  return (
-    <article className={`task-item ${task.is_complete ? "complete" : ""}`}>
-      <button
-        className="check-button"
-        type="button"
-        onClick={() => onToggle(task)}
-        aria-label={task.is_complete ? "Mark task active" : "Mark task done"}
-        title={task.is_complete ? "Mark active" : "Mark done"}
-      >
-        {task.is_complete ? <Check aria-hidden="true" /> : <Circle aria-hidden="true" />}
-      </button>
-
-      <div className="task-content">
-        <p>{task.title}</p>
-        <div className="task-meta">
-          <span className={`priority ${task.priority}`}>{task.priority}</span>
-          {task.due_date ? (
-            <span>
-              <CalendarDays aria-hidden="true" />
-              {formatDate(task.due_date)}
-            </span>
-          ) : null}
-        </div>
-      </div>
-
-      <button
-        className="delete-button"
-        type="button"
-        onClick={() => onDelete(task)}
-        aria-label="Delete task"
-        title="Delete task"
-      >
-        <Trash2 aria-hidden="true" />
-      </button>
-    </article>
-  );
-}
-
-function readLocalTasks() {
+function readProjects() {
   try {
-    return JSON.parse(localStorage.getItem(localStorageKey) || "[]");
+    return JSON.parse(localStorage.getItem(projectStorageKey) || "[]");
   } catch {
     return [];
   }
 }
 
+function openFileDb() {
+  return new Promise((resolve, reject) => {
+    const request = indexedDB.open(fileDbName, 1);
+    request.onupgradeneeded = () => request.result.createObjectStore(fileStoreName);
+    request.onsuccess = () => resolve(request.result);
+    request.onerror = () => reject(request.error);
+  });
+}
+
+async function saveFileBlob(id, file) {
+  const db = await openFileDb();
+  return new Promise((resolve, reject) => {
+    const transaction = db.transaction(fileStoreName, "readwrite");
+    transaction.objectStore(fileStoreName).put(file, id);
+    transaction.oncomplete = resolve;
+    transaction.onerror = () => reject(transaction.error);
+  });
+}
+
+async function getFileBlob(id) {
+  const db = await openFileDb();
+  return new Promise((resolve, reject) => {
+    const request = db.transaction(fileStoreName, "readonly").objectStore(fileStoreName).get(id);
+    request.onsuccess = () => resolve(request.result);
+    request.onerror = () => reject(request.error);
+  });
+}
+
+async function deleteFileBlob(id) {
+  const db = await openFileDb();
+  return new Promise((resolve, reject) => {
+    const transaction = db.transaction(fileStoreName, "readwrite");
+    transaction.objectStore(fileStoreName).delete(id);
+    transaction.oncomplete = resolve;
+    transaction.onerror = () => reject(transaction.error);
+  });
+}
+
 function formatDate(value) {
-  return new Intl.DateTimeFormat(undefined, { month: "short", day: "numeric" }).format(new Date(value));
+  if (!value) return "No date";
+  return new Intl.DateTimeFormat(undefined, { month: "short", day: "numeric", year: "numeric" }).format(
+    new Date(value)
+  );
+}
+
+function formatFileSize(size) {
+  if (size < 1024) return `${size} B`;
+  if (size < 1024 * 1024) return `${(size / 1024).toFixed(1)} KB`;
+  return `${(size / (1024 * 1024)).toFixed(1)} MB`;
 }
 
 createRoot(document.getElementById("root")).render(<App />);

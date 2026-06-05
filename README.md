@@ -1,59 +1,54 @@
-# TaskFlow
+# ProjectTrack
 
-TaskFlow is a Vite + React todo / task tracker that deploys to Vercel and can sync tasks with Supabase.
+ProjectTrack is a Vite + React engineering project tracker deployed on Vercel.
 
 ## Features
 
-- Add tasks
-- Mark tasks done
-- Delete tasks
-- Set priority
-- Set due date
-- Filter active, all, and done tasks
-- Use browser local storage when Supabase is not configured
-- Sync with Supabase when environment variables and the `tasks` table exist
+- Track multiple engineering projects
+- Edit project owner/client, stage, status, dates, progress, and notes
+- Add deliverables or action items with owner and due date
+- Mark deliverables complete
+- Upload engineering files such as drawings, reports, RFIs, inspection photos, schedules, and handover documents
+- Download or delete uploaded files
+- Store data locally in the browser using `localStorage` and `IndexedDB`
+
+## Important Storage Note
+
+This version works immediately without a backend. Project data and uploaded files are stored inside the browser on the current device.
+
+That means:
+
+- The app works now on the live Vercel URL.
+- Files uploaded on one device will not appear on another device yet.
+- Clearing browser data can remove locally stored projects and files.
+
+For cross-device file sharing, connect Supabase Database + Supabase Storage next.
 
 ## Run Locally
 
 ```bash
 npm install
-copy .env.example .env
 npm run dev
 ```
 
 Open the local URL printed by Vite.
 
-## Supabase Setup
-
-1. Create a Supabase project.
-2. Open **SQL Editor**.
-3. Run the SQL in `supabase/schema.sql`.
-4. Open **Project Settings > API**.
-5. Copy your project URL and anon / publishable key.
-6. Put them in `.env` locally:
-
-```env
-VITE_SUPABASE_URL=https://your-project-ref.supabase.co
-VITE_SUPABASE_ANON_KEY=your-supabase-anon-or-publishable-key
-```
-
-Do not put a Supabase service role key in this frontend app.
-
-The included SQL allows public demo access through the anon key. For private personal tasks, add Supabase Auth and change the RLS policies to `auth.uid()` ownership policies.
-
 ## Deploy to Vercel
-
-Add the same variables in your Vercel project:
-
-```env
-VITE_SUPABASE_URL=...
-VITE_SUPABASE_ANON_KEY=...
-```
-
-Then deploy:
 
 ```bash
 vercel --prod
 ```
 
 If your Vercel project is connected to GitHub, every push to `main` can deploy automatically.
+
+## Future Supabase Upgrade
+
+Use Supabase when you want shared projects, real accounts, and cloud file storage.
+
+Recommended next backend pieces:
+
+- `projects` table
+- `project_tasks` table
+- `project_files` table
+- Supabase Storage bucket named `engineering-files`
+- Supabase Auth so each user sees only their own projects
