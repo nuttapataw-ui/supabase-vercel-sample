@@ -32,6 +32,7 @@ const starterProject = {
   startDate: "2026-06-01",
   targetDate: "2026-08-30",
   notes: "Track drawings, site reports, RFIs, procurement notes, and handover files in one workspace.",
+  lastUpdate: "Ready for file submissions",
   tasks: [
     {
       id: crypto.randomUUID(),
@@ -59,6 +60,7 @@ function App() {
   const [taskOwner, setTaskOwner] = useState("");
   const [taskDueDate, setTaskDueDate] = useState("");
   const [fileNote, setFileNote] = useState("");
+  const [pendingFiles, setPendingFiles] = useState([]);
   const [activeView, setActiveView] = useState("overview");
   const fileInputRef = useRef(null);
 
@@ -110,6 +112,7 @@ function App() {
       startDate: new Date().toISOString().slice(0, 10),
       targetDate: "",
       notes: "",
+      lastUpdate: "Project created",
       tasks: [],
       files: []
     };
@@ -163,13 +166,17 @@ function App() {
     }));
   }
 
-  async function uploadFiles(event) {
-    const files = Array.from(event.target.files || []);
-    if (!files.length) return;
+  function selectFiles(event) {
+    setPendingFiles(Array.from(event.target.files || []));
+  }
+
+  async function submitFiles(event) {
+    event.preventDefault();
+    if (!pendingFiles.length) return;
 
     const uploadedFiles = [];
 
-    for (const file of files) {
+    for (const file of pendingFiles) {
       const id = crypto.randomUUID();
       await saveFileBlob(id, file);
       uploadedFiles.push({
@@ -182,9 +189,14 @@ function App() {
       });
     }
 
-    updateSelectedProject((project) => ({ ...project, files: [...uploadedFiles, ...project.files] }));
+    updateSelectedProject((project) => ({
+      ...project,
+      files: [...uploadedFiles, ...project.files],
+      lastUpdate: `${uploadedFiles.length} file${uploadedFiles.length === 1 ? "" : "s"} submitted`
+    }));
     setFileNote("");
-    event.target.value = "";
+    setPendingFiles([]);
+    if (fileInputRef.current) fileInputRef.current.value = "";
   }
 
   async function downloadFile(file) {
@@ -264,6 +276,7 @@ function App() {
             <SummaryCard icon={<Gauge />} label="Project Progress" value={`${selectedProject.progress}%`} />
             <SummaryCard icon={<Check />} label="Task Completion" value={`${taskCompletion}%`} />
             <SummaryCard icon={<FileText />} label="Files Uploaded" value={selectedProject.files.length} />
+            <SummaryCard icon={<Upload />} label="Latest Update" value={selectedProject.lastUpdate || "No updates"} />
           </section>
 
           <nav className="view-tabs" aria-label="Project views">
@@ -308,8 +321,10 @@ function App() {
               files={selectedProject.files}
               note={fileNote}
               setNote={setFileNote}
+              pendingFiles={pendingFiles}
               inputRef={fileInputRef}
-              onUpload={uploadFiles}
+              onSelect={selectFiles}
+              onSubmit={submitFiles}
               onDownload={downloadFile}
               onDelete={deleteFile}
             />
@@ -471,21 +486,31 @@ function TaskTracker({ tasks, title, owner, dueDate, setTitle, setOwner, setDueD
   );
 }
 
-function FileTracker({ files, note, setNote, inputRef, onUpload, onDownload, onDelete }) {
+function FileTracker({ files, note, setNote, pendingFiles, inputRef, onSelect, onSubmit, onDownload, onDelete }) {
   return (
     <section>
-      <div className="upload-zone">
+      <form className="upload-zone" onSubmit={onSubmit}>
         <div>
           <Upload aria-hidden="true" />
           <h3>Upload engineering files</h3>
-          <p>Store drawings, reports, RFIs, inspection photos, schedules, and handover documents in this browser.</p>
+          <p>Select files, add a note, then submit to update the project tracker.</p>
         </div>
         <label>
           <span>File Note</span>
           <input value={note} onChange={(event) => setNote(event.target.value)} placeholder="Drawing, RFI, report..." />
         </label>
-        <input ref={inputRef} type="file" multiple onChange={onUpload} />
-      </div>
+        <label>
+          <span>Files</span>
+          <input ref={inputRef} type="file" multiple onChange={onSelect} />
+        </label>
+        <div className="pending-files">
+          <span>{pendingFiles.length} selected</span>
+          <button className="primary-button" type="submit" disabled={!pendingFiles.length}>
+            <Upload aria-hidden="true" />
+            Submit Files
+          </button>
+        </div>
+      </form>
 
       <div className="file-list">
         {files.length ? (
