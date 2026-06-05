@@ -10,6 +10,7 @@ ProjectTrack is a Vite + React engineering project tracker deployed on Vercel.
 - Mark deliverables complete
 - Upload engineering files such as drawings, reports, RFIs, inspection photos, schedules, and handover documents
 - Download or delete uploaded files
+- Read `.pptx` PowerPoint files and extract slide text plus basic table rows
 - Store data locally in the browser using `localStorage` and `IndexedDB`
 
 ## Important Storage Note
@@ -20,6 +21,7 @@ That means:
 
 - The app works now on the live Vercel URL.
 - Files uploaded on one device will not appear on another device yet.
+- PowerPoint extraction results are saved on the current browser/device.
 - Clearing browser data can remove locally stored projects and files.
 
 For cross-device file sharing, connect Supabase Database + Supabase Storage next.

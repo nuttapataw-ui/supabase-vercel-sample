@@ -1,5 +1,6 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { createRoot } from "react-dom/client";
+import JSZip from "jszip";
 import {
   CalendarDays,
   Check,
@@ -11,6 +12,7 @@ import {
   Gauge,
   HardHat,
   Plus,
+  Presentation,
   Save,
   Trash2,
   Upload
@@ -33,6 +35,7 @@ const starterProject = {
   targetDate: "2026-08-30",
   notes: "Track drawings, site reports, RFIs, procurement notes, and handover files in one workspace.",
   lastUpdate: "Ready for file submissions",
+  pptxExtracts: [],
   tasks: [
     {
       id: crypto.randomUUID(),
@@ -113,6 +116,7 @@ function App() {
       targetDate: "",
       notes: "",
       lastUpdate: "Project created",
+      pptxExtracts: [],
       tasks: [],
       files: []
     };
@@ -246,6 +250,34 @@ function App() {
     });
   }
 
+  async function extractPowerPoint(event) {
+    const file = event.target.files?.[0];
+    if (!file) return;
+
+    try {
+      const extraction = await extractPptxData(file);
+      updateSelectedProject((project) => {
+        const updatedProject = {
+          ...project,
+          pptxExtracts: [extraction, ...(project.pptxExtracts || [])],
+          lastUpdate: `PowerPoint extracted: ${extraction.fileName}`
+        };
+
+        return {
+          ...updatedProject,
+          progress: calculateAutoProgress(updatedProject)
+        };
+      });
+    } catch (error) {
+      updateSelectedProject((project) => ({
+        ...project,
+        lastUpdate: `PowerPoint extraction failed: ${error.message || "unknown error"}`
+      }));
+    } finally {
+      event.target.value = "";
+    }
+  }
+
   if (!selectedProject || !projectDraft) {
     return null;
   }
@@ -303,11 +335,16 @@ function App() {
             <SummaryCard icon={<Gauge />} label="Project Progress" value={`${selectedProject.progress}%`} />
             <SummaryCard icon={<Check />} label="Task Completion" value={`${taskCompletion}%`} />
             <SummaryCard icon={<FileText />} label="Files Uploaded" value={selectedProject.files.length} />
+            <SummaryCard
+              icon={<Presentation />}
+              label="Decks Extracted"
+              value={(selectedProject.pptxExtracts || []).length}
+            />
             <SummaryCard icon={<Upload />} label="Latest Update" value={selectedProject.lastUpdate || "No updates"} />
           </section>
 
           <nav className="view-tabs" aria-label="Project views">
-            {["overview", "tasks", "files"].map((view) => (
+            {["overview", "tasks", "files", "pptx"].map((view) => (
               <button
                 className={activeView === view ? "selected" : ""}
                 key={view}
@@ -354,6 +391,13 @@ function App() {
               onSubmit={submitFiles}
               onDownload={downloadFile}
               onDelete={deleteFile}
+            />
+          ) : null}
+
+          {activeView === "pptx" ? (
+            <PowerPointExtractor
+              extracts={selectedProject.pptxExtracts || []}
+              onExtract={extractPowerPoint}
             />
           ) : null}
         </section>
@@ -570,6 +614,71 @@ function FileTracker({ files, note, setNote, pendingFiles, inputRef, onSelect, o
   );
 }
 
+function PowerPointExtractor({ extracts, onExtract }) {
+  return (
+    <section>
+      <div className="pptx-zone">
+        <div>
+          <Presentation aria-hidden="true" />
+          <h3>Extract PowerPoint data</h3>
+          <p>Upload a `.pptx` file to extract slide titles, slide text, and table-like rows into this project.</p>
+        </div>
+        <label>
+          <span>PowerPoint File</span>
+          <input type="file" accept=".pptx" onChange={onExtract} />
+        </label>
+      </div>
+
+      <div className="extract-list">
+        {extracts.length ? (
+          extracts.map((extract) => (
+            <article className="extract-item" key={extract.id}>
+              <header>
+                <div>
+                  <p>{extract.fileName}</p>
+                  <span>
+                    {extract.slides.length} slides · {extract.tables.length} table-like rows ·{" "}
+                    {formatDate(extract.createdAt)}
+                  </span>
+                </div>
+              </header>
+              <div className="slide-results">
+                {extract.slides.map((slide) => (
+                  <details key={slide.number}>
+                    <summary>
+                      Slide {slide.number}: {slide.title || "Untitled"}
+                    </summary>
+                    <ul>
+                      {slide.text.length ? (
+                        slide.text.map((line, index) => <li key={`${slide.number}-${index}`}>{line}</li>)
+                      ) : (
+                        <li>No readable text found.</li>
+                      )}
+                    </ul>
+                  </details>
+                ))}
+              </div>
+              {extract.tables.length ? (
+                <div className="table-results">
+                  <h4>Extracted table rows</h4>
+                  {extract.tables.map((row) => (
+                    <p key={`${row.slideNumber}-${row.rowIndex}`}>
+                      <strong>Slide {row.slideNumber}</strong>
+                      {row.cells.join(" | ")}
+                    </p>
+                  ))}
+                </div>
+              ) : null}
+            </article>
+          ))
+        ) : (
+          <EmptyState text="No PowerPoint files extracted yet." />
+        )}
+      </div>
+    </section>
+  );
+}
+
 function EmptyState({ text }) {
   return (
     <div className="empty-state">
@@ -590,12 +699,79 @@ function readProjects() {
 function calculateAutoProgress(project) {
   const tasks = project.tasks || [];
   const files = project.files || [];
+  const decks = project.pptxExtracts || [];
   const taskScore = tasks.length
     ? Math.round((tasks.filter((task) => task.isComplete).length / tasks.length) * 70)
     : 0;
-  const fileScore = Math.min(files.length * 6, 30);
+  const fileScore = Math.min(files.length * 5 + decks.length * 5, 30);
 
   return Math.min(100, taskScore + fileScore);
+}
+
+async function extractPptxData(file) {
+  const zip = await JSZip.loadAsync(file);
+  const slidePaths = Object.keys(zip.files)
+    .filter((path) => /^ppt\/slides\/slide\d+\.xml$/.test(path))
+    .sort((a, b) => getSlideNumber(a) - getSlideNumber(b));
+
+  if (!slidePaths.length) {
+    throw new Error("No slides found");
+  }
+
+  const slides = [];
+  const tables = [];
+
+  for (const path of slidePaths) {
+    const xmlText = await zip.files[path].async("text");
+    const xml = new DOMParser().parseFromString(xmlText, "application/xml");
+    const textLines = Array.from(xml.getElementsByTagName("a:t"))
+      .map((node) => cleanText(node.textContent))
+      .filter(Boolean);
+    const uniqueLines = [...new Set(textLines)];
+    const title = uniqueLines[0] || "";
+    const tableRows = extractTableRows(xml, getSlideNumber(path));
+
+    tables.push(...tableRows);
+    slides.push({
+      number: getSlideNumber(path),
+      title,
+      text: uniqueLines,
+      tableRows
+    });
+  }
+
+  return {
+    id: crypto.randomUUID(),
+    fileName: file.name,
+    createdAt: new Date().toISOString(),
+    slides,
+    tables
+  };
+}
+
+function extractTableRows(xml, slideNumber) {
+  return Array.from(xml.getElementsByTagName("a:tr")).map((row, rowIndex) => {
+    const cells = Array.from(row.getElementsByTagName("a:tc")).map((cell) =>
+      Array.from(cell.getElementsByTagName("a:t"))
+        .map((node) => cleanText(node.textContent))
+        .filter(Boolean)
+        .join(" ")
+    );
+
+    return {
+      slideNumber,
+      rowIndex: rowIndex + 1,
+      cells: cells.filter(Boolean)
+    };
+  }).filter((row) => row.cells.length);
+}
+
+function getSlideNumber(path) {
+  return Number(path.match(/slide(\d+)\.xml/)?.[1] || 0);
+}
+
+function cleanText(value) {
+  return (value || "").replace(/\s+/g, " ").trim();
 }
 
 function openFileDb() {

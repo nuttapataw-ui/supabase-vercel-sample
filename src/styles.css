@@ -192,7 +192,7 @@ h2 {
 
 .summary-grid {
   display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
+  grid-template-columns: repeat(5, minmax(0, 1fr));
   gap: 14px;
   margin: 24px 0;
 }
@@ -244,7 +244,7 @@ h2 {
 }
 
 .view-tabs button {
-  min-width: 94px;
+  min-width: 88px;
   border: 0;
   border-radius: 6px;
   padding: 9px 12px;
@@ -440,7 +440,8 @@ textarea:focus {
   height: 14px;
 }
 
-.upload-zone {
+.upload-zone,
+.pptx-zone {
   display: grid;
   grid-template-columns: minmax(220px, 1fr) minmax(180px, 240px) minmax(220px, 280px) 170px;
   gap: 14px;
@@ -452,21 +453,114 @@ textarea:focus {
   background: #ffffff;
 }
 
-.upload-zone > div {
+.pptx-zone {
+  grid-template-columns: minmax(260px, 1fr) minmax(240px, 360px);
+}
+
+.upload-zone > div,
+.pptx-zone > div {
   display: grid;
   gap: 8px;
 }
 
-.upload-zone svg {
+.upload-zone svg,
+.pptx-zone svg {
   width: 28px;
   height: 28px;
   color: #12825c;
 }
 
-.upload-zone p {
+.upload-zone p,
+.pptx-zone p {
   margin: 0;
   color: #60716a;
   line-height: 1.5;
+}
+
+.extract-list {
+  display: grid;
+  gap: 12px;
+}
+
+.extract-item {
+  border: 1px solid #dce4de;
+  border-radius: 8px;
+  padding: 16px;
+  background: #ffffff;
+}
+
+.extract-item header {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 12px;
+}
+
+.extract-item p {
+  margin: 0;
+  overflow-wrap: anywhere;
+  color: #202522;
+  font-weight: 900;
+}
+
+.extract-item span {
+  display: block;
+  margin-top: 6px;
+  color: #64746d;
+  font-size: 0.86rem;
+}
+
+.slide-results {
+  display: grid;
+  gap: 8px;
+}
+
+.slide-results details {
+  border: 1px solid #e1e8e4;
+  border-radius: 8px;
+  padding: 10px 12px;
+  background: #f8faf8;
+}
+
+.slide-results summary {
+  cursor: pointer;
+  color: #164b38;
+  font-weight: 900;
+}
+
+.slide-results ul {
+  margin: 10px 0 0;
+  padding-left: 20px;
+  color: #46564f;
+  line-height: 1.45;
+}
+
+.table-results {
+  display: grid;
+  gap: 8px;
+  margin-top: 14px;
+  border-top: 1px solid #e1e8e4;
+  padding-top: 14px;
+}
+
+.table-results h4 {
+  margin: 0;
+  color: #202522;
+  font-size: 0.95rem;
+}
+
+.table-results p {
+  margin: 0;
+  border-radius: 8px;
+  padding: 9px 10px;
+  color: #46564f;
+  background: #f5f7f4;
+  font-size: 0.9rem;
+}
+
+.table-results strong {
+  margin-right: 10px;
+  color: #164b38;
 }
 
 .pending-files {
@@ -527,7 +621,8 @@ textarea:focus {
   .summary-grid,
   .overview-grid,
   .task-form,
-  .upload-zone {
+  .upload-zone,
+  .pptx-zone {
     grid-template-columns: 1fr;
   }
 
@@ -537,7 +632,7 @@ textarea:focus {
 
   .view-tabs {
     display: grid;
-    grid-template-columns: repeat(3, minmax(0, 1fr));
+    grid-template-columns: repeat(2, minmax(0, 1fr));
     width: 100%;
   }
 
