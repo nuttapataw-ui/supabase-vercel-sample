@@ -154,6 +154,84 @@ h2 {
   font-weight: 800;
 }
 
+.profile-panel {
+  display: grid;
+  gap: 10px;
+  border: 1px solid #d7e0da;
+  border-radius: 8px;
+  padding: 12px;
+  background: #ffffff;
+}
+
+.profile-heading {
+  display: grid;
+  grid-template-columns: 34px minmax(0, 1fr);
+  gap: 10px;
+  align-items: center;
+}
+
+.profile-heading > svg {
+  width: 34px;
+  height: 34px;
+  border-radius: 8px;
+  padding: 8px;
+  color: #0f6b4d;
+  background: #e2f6ea;
+}
+
+.profile-heading p {
+  margin: 0 0 2px;
+  color: #1f7a58;
+  font-size: 0.76rem;
+  font-weight: 900;
+  text-transform: uppercase;
+}
+
+.profile-heading strong {
+  display: block;
+  overflow: hidden;
+  color: #202522;
+  font-size: 0.88rem;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.profile-name-form {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 62px;
+  gap: 8px;
+}
+
+.profile-button {
+  display: inline-flex;
+  min-height: 38px;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  border: 0;
+  border-radius: 8px;
+  color: #ffffff;
+  background: #164b38;
+  font-size: 0.86rem;
+  font-weight: 900;
+}
+
+.profile-button.secondary {
+  color: #164b38;
+  background: #e7efe9;
+}
+
+.profile-button svg {
+  width: 16px;
+  height: 16px;
+}
+
+.cloud-status {
+  color: #60716a;
+  font-size: 0.8rem;
+  line-height: 1.35;
+}
+
 .main-panel {
   min-width: 0;
   padding: 28px;

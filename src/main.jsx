@@ -1,6 +1,7 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { createRoot } from "react-dom/client";
 import JSZip from "jszip";
+import { createClient } from "@supabase/supabase-js";
 import {
   CalendarDays,
   Check,
@@ -11,14 +12,20 @@ import {
   FolderKanban,
   Gauge,
   HardHat,
+  LogOut,
+  Mail,
   Plus,
   Presentation,
   Save,
   Trash2,
-  Upload
+  Upload,
+  User
 } from "lucide-react";
 import "./styles.css";
 
+const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
+const supabaseKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
+const cloudBucket = "engineering-files";
 const projectStorageKey = "engtrack.projects";
 const selectedProjectKey = "engtrack.selectedProject";
 const fileDbName = "engtrack-files";
@@ -56,6 +63,11 @@ const starterProject = {
 };
 
 function App() {
+  const supabase = useMemo(() => {
+    if (!supabaseUrl || !supabaseKey) return null;
+    return createClient(supabaseUrl, supabaseKey);
+  }, []);
+
   const [projects, setProjects] = useState([]);
   const [selectedProjectId, setSelectedProjectId] = useState("");
   const [projectDraft, setProjectDraft] = useState(null);
@@ -65,6 +77,12 @@ function App() {
   const [fileNote, setFileNote] = useState("");
   const [pendingFiles, setPendingFiles] = useState([]);
   const [activeView, setActiveView] = useState("overview");
+  const [session, setSession] = useState(null);
+  const [email, setEmail] = useState("");
+  const [displayName, setDisplayName] = useState("");
+  const [cloudStatus, setCloudStatus] = useState(supabase ? "Cloud ready" : "Local only");
+  const cloudSaveTimer = useRef(null);
+  const cloudLoadedRef = useRef(false);
   const fileInputRef = useRef(null);
 
   useEffect(() => {
@@ -78,6 +96,27 @@ function App() {
     setProjects(initialProjects);
     setSelectedProjectId(initialSelectedId);
   }, []);
+
+  useEffect(() => {
+    if (!supabase) return undefined;
+
+    supabase.auth.getSession().then(({ data }) => {
+      setSession(data.session);
+      if (data.session) loadCloudProfile(data.session.user);
+    });
+
+    const { data } = supabase.auth.onAuthStateChange((_event, nextSession) => {
+      setSession(nextSession);
+      if (nextSession) {
+        loadCloudProfile(nextSession.user);
+      } else {
+        cloudLoadedRef.current = false;
+        setCloudStatus("Signed out");
+      }
+    });
+
+    return () => data.subscription.unsubscribe();
+  }, [supabase]);
 
   const selectedProject = useMemo(
     () => projects.find((project) => project.id === selectedProjectId) || projects[0],
@@ -94,6 +133,7 @@ function App() {
   function persistProjects(nextProjects) {
     setProjects(nextProjects);
     localStorage.setItem(projectStorageKey, JSON.stringify(nextProjects));
+    queueCloudSave(nextProjects);
   }
 
   function updateSelectedProject(updater) {
@@ -194,13 +234,14 @@ function App() {
 
     for (const file of pendingFiles) {
       const id = crypto.randomUUID();
-      await saveFileBlob(id, file);
+      const storagePath = await saveUploadedFile(id, file);
       uploadedFiles.push({
         id,
         name: file.name,
         size: file.size,
         type: file.type || "Unknown",
         note: fileNote.trim(),
+        storagePath,
         uploadedAt: new Date().toISOString()
       });
     }
@@ -223,6 +264,17 @@ function App() {
   }
 
   async function downloadFile(file) {
+    if (file.storagePath && supabase && session) {
+      const { data, error } = await supabase.storage
+        .from(cloudBucket)
+        .createSignedUrl(file.storagePath, 60);
+
+      if (!error && data?.signedUrl) {
+        window.open(data.signedUrl, "_blank", "noopener,noreferrer");
+        return;
+      }
+    }
+
     const blob = await getFileBlob(file.id);
     if (!blob) return;
 
@@ -235,6 +287,11 @@ function App() {
   }
 
   async function deleteFile(fileId) {
+    const file = selectedProject.files.find((item) => item.id === fileId);
+    if (file?.storagePath && supabase && session) {
+      await supabase.storage.from(cloudBucket).remove([file.storagePath]);
+    }
+
     await deleteFileBlob(fileId);
     updateSelectedProject((project) => {
       const updatedProject = {
@@ -278,6 +335,97 @@ function App() {
     }
   }
 
+  async function saveUploadedFile(id, file) {
+    if (supabase && session) {
+      const safeName = file.name.replace(/[^a-zA-Z0-9._-]/g, "_");
+      const storagePath = `${session.user.id}/${selectedProject.id}/${id}-${safeName}`;
+      const { error } = await supabase.storage.from(cloudBucket).upload(storagePath, file, {
+        upsert: true
+      });
+
+      if (!error) return storagePath;
+      setCloudStatus("Storage upload failed; saved file locally");
+    }
+
+    await saveFileBlob(id, file);
+    return "";
+  }
+
+  async function signIn(event) {
+    event.preventDefault();
+    if (!supabase || !email.trim()) return;
+
+    setCloudStatus("Sending sign-in link");
+    const { error } = await supabase.auth.signInWithOtp({
+      email: email.trim(),
+      options: { emailRedirectTo: window.location.origin }
+    });
+
+    setCloudStatus(error ? error.message : "Check your email for the sign-in link");
+  }
+
+  async function signOut() {
+    if (!supabase) return;
+    await supabase.auth.signOut();
+  }
+
+  async function loadCloudProfile(user) {
+    if (!supabase || !user) return;
+
+    setCloudStatus("Loading profile");
+    const { data, error } = await supabase
+      .from("user_profiles")
+      .select("display_name, project_data")
+      .eq("user_id", user.id)
+      .maybeSingle();
+
+    if (error) {
+      setCloudStatus("Run Supabase profile schema to enable sync");
+      return;
+    }
+
+    const profileProjects = data?.project_data?.projects;
+    const nextProjects = Array.isArray(profileProjects) && profileProjects.length ? profileProjects : projects;
+    setDisplayName(data?.display_name || user.email || "");
+    setProjects(nextProjects);
+    localStorage.setItem(projectStorageKey, JSON.stringify(nextProjects));
+    setSelectedProjectId(nextProjects[0]?.id || "");
+    cloudLoadedRef.current = true;
+
+    if (!data) {
+      await saveCloudProfile(nextProjects, data?.display_name || user.email || "");
+    }
+
+    setCloudStatus("Profile synced");
+  }
+
+  function queueCloudSave(nextProjects) {
+    if (!supabase || !session || !cloudLoadedRef.current) return;
+    window.clearTimeout(cloudSaveTimer.current);
+    cloudSaveTimer.current = window.setTimeout(() => {
+      saveCloudProfile(nextProjects, displayName || session.user.email || "");
+    }, 650);
+  }
+
+  async function saveCloudProfile(nextProjects = projects, nextDisplayName = displayName) {
+    if (!supabase || !session) return;
+
+    setCloudStatus("Saving profile");
+    const { error } = await supabase.from("user_profiles").upsert({
+      user_id: session.user.id,
+      display_name: nextDisplayName,
+      project_data: { projects: nextProjects },
+      updated_at: new Date().toISOString()
+    });
+
+    setCloudStatus(error ? "Profile save failed" : "Profile synced");
+  }
+
+  async function saveProfileName(event) {
+    event.preventDefault();
+    await saveCloudProfile(projects, displayName);
+  }
+
   if (!selectedProject || !projectDraft) {
     return null;
   }
@@ -303,6 +451,19 @@ function App() {
             <Plus aria-hidden="true" />
             New Project
           </button>
+
+          <ProfilePanel
+            supabase={supabase}
+            session={session}
+            email={email}
+            setEmail={setEmail}
+            displayName={displayName}
+            setDisplayName={setDisplayName}
+            status={cloudStatus}
+            onSignIn={signIn}
+            onSignOut={signOut}
+            onSaveName={saveProfileName}
+          />
 
           <div className="project-list">
             {projects.map((project) => (
@@ -413,6 +574,85 @@ function SummaryCard({ icon, label, value }) {
       <p>{label}</p>
       <strong>{value}</strong>
     </article>
+  );
+}
+
+function ProfilePanel({
+  supabase,
+  session,
+  email,
+  setEmail,
+  displayName,
+  setDisplayName,
+  status,
+  onSignIn,
+  onSignOut,
+  onSaveName
+}) {
+  if (!supabase) {
+    return (
+      <section className="profile-panel">
+        <div className="profile-heading">
+          <User aria-hidden="true" />
+          <div>
+            <p>Profile</p>
+            <strong>Local mode</strong>
+          </div>
+        </div>
+        <span className="cloud-status">Add Supabase env vars for multi-device sync.</span>
+      </section>
+    );
+  }
+
+  if (!session) {
+    return (
+      <form className="profile-panel" onSubmit={onSignIn}>
+        <div className="profile-heading">
+          <Mail aria-hidden="true" />
+          <div>
+            <p>Profile</p>
+            <strong>Sign in to sync</strong>
+          </div>
+        </div>
+        <input
+          type="email"
+          value={email}
+          onChange={(event) => setEmail(event.target.value)}
+          placeholder="you@example.com"
+        />
+        <button className="profile-button" type="submit">
+          Send Link
+        </button>
+        <span className="cloud-status">{status}</span>
+      </form>
+    );
+  }
+
+  return (
+    <section className="profile-panel">
+      <div className="profile-heading">
+        <User aria-hidden="true" />
+        <div>
+          <p>Profile</p>
+          <strong>{session.user.email}</strong>
+        </div>
+      </div>
+      <form className="profile-name-form" onSubmit={onSaveName}>
+        <input
+          value={displayName}
+          onChange={(event) => setDisplayName(event.target.value)}
+          placeholder="Profile name"
+        />
+        <button className="profile-button" type="submit">
+          Save
+        </button>
+      </form>
+      <button className="profile-button secondary" type="button" onClick={onSignOut}>
+        <LogOut aria-hidden="true" />
+        Sign Out
+      </button>
+      <span className="cloud-status">{status}</span>
+    </section>
   );
 }
 

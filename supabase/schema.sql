@@ -1,63 +1,88 @@
--- Future cloud schema for ProjectTrack.
--- Run this only when you are ready to move from local browser storage to Supabase.
+-- ProjectTrack profile sync schema.
+-- Run in Supabase SQL Editor, then add VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY in Vercel.
 
 create extension if not exists "pgcrypto";
 
-create table if not exists public.projects (
-  id uuid primary key default gen_random_uuid(),
-  name text not null,
-  client text,
-  stage text not null default 'Planning',
-  status text not null default 'On Track',
-  progress integer not null default 0 check (progress between 0 and 100),
-  start_date date,
-  target_date date,
-  notes text,
+create table if not exists public.user_profiles (
+  user_id uuid primary key references auth.users(id) on delete cascade,
+  display_name text,
+  project_data jsonb not null default '{"projects":[]}'::jsonb,
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now()
 );
 
-create table if not exists public.project_tasks (
-  id uuid primary key default gen_random_uuid(),
-  project_id uuid not null references public.projects(id) on delete cascade,
-  title text not null,
-  owner text,
-  due_date date,
-  is_complete boolean not null default false,
-  created_at timestamptz not null default now()
+alter table public.user_profiles enable row level security;
+
+drop policy if exists "Users can read own profile" on public.user_profiles;
+drop policy if exists "Users can insert own profile" on public.user_profiles;
+drop policy if exists "Users can update own profile" on public.user_profiles;
+drop policy if exists "Users can delete own profile" on public.user_profiles;
+
+create policy "Users can read own profile"
+on public.user_profiles for select
+to authenticated
+using (auth.uid() = user_id);
+
+create policy "Users can insert own profile"
+on public.user_profiles for insert
+to authenticated
+with check (auth.uid() = user_id);
+
+create policy "Users can update own profile"
+on public.user_profiles for update
+to authenticated
+using (auth.uid() = user_id)
+with check (auth.uid() = user_id);
+
+create policy "Users can delete own profile"
+on public.user_profiles for delete
+to authenticated
+using (auth.uid() = user_id);
+
+grant usage on schema public to authenticated;
+grant select, insert, update, delete on public.user_profiles to authenticated;
+
+insert into storage.buckets (id, name, public)
+values ('engineering-files', 'engineering-files', false)
+on conflict (id) do nothing;
+
+drop policy if exists "Users can read own engineering files" on storage.objects;
+drop policy if exists "Users can upload own engineering files" on storage.objects;
+drop policy if exists "Users can update own engineering files" on storage.objects;
+drop policy if exists "Users can delete own engineering files" on storage.objects;
+
+create policy "Users can read own engineering files"
+on storage.objects for select
+to authenticated
+using (
+  bucket_id = 'engineering-files'
+  and owner = auth.uid()
 );
 
-create table if not exists public.project_files (
-  id uuid primary key default gen_random_uuid(),
-  project_id uuid not null references public.projects(id) on delete cascade,
-  file_name text not null,
-  storage_path text not null,
-  file_size bigint,
-  file_type text,
-  note text,
-  uploaded_at timestamptz not null default now()
+create policy "Users can upload own engineering files"
+on storage.objects for insert
+to authenticated
+with check (
+  bucket_id = 'engineering-files'
+  and owner = auth.uid()
 );
 
-alter table public.projects enable row level security;
-alter table public.project_tasks enable row level security;
-alter table public.project_files enable row level security;
+create policy "Users can update own engineering files"
+on storage.objects for update
+to authenticated
+using (
+  bucket_id = 'engineering-files'
+  and owner = auth.uid()
+)
+with check (
+  bucket_id = 'engineering-files'
+  and owner = auth.uid()
+);
 
--- Demo-only public policies. Replace with auth.uid() ownership policies for private production use.
-create policy "Demo read projects" on public.projects for select to anon using (true);
-create policy "Demo insert projects" on public.projects for insert to anon with check (true);
-create policy "Demo update projects" on public.projects for update to anon using (true) with check (true);
-create policy "Demo delete projects" on public.projects for delete to anon using (true);
-
-create policy "Demo read project tasks" on public.project_tasks for select to anon using (true);
-create policy "Demo insert project tasks" on public.project_tasks for insert to anon with check (true);
-create policy "Demo update project tasks" on public.project_tasks for update to anon using (true) with check (true);
-create policy "Demo delete project tasks" on public.project_tasks for delete to anon using (true);
-
-create policy "Demo read project files" on public.project_files for select to anon using (true);
-create policy "Demo insert project files" on public.project_files for insert to anon with check (true);
-create policy "Demo delete project files" on public.project_files for delete to anon using (true);
-
-grant usage on schema public to anon;
-grant select, insert, update, delete on public.projects to anon;
-grant select, insert, update, delete on public.project_tasks to anon;
-grant select, insert, delete on public.project_files to anon;
+create policy "Users can delete own engineering files"
+on storage.objects for delete
+to authenticated
+using (
+  bucket_id = 'engineering-files'
+  and owner = auth.uid()
+);
