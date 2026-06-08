@@ -47,6 +47,43 @@ button {
   box-shadow: 0 24px 70px rgba(15, 23, 19, 0.28);
 }
 
+.loading-panel {
+  display: grid;
+  width: min(420px, 100%);
+  margin: 15vh auto 0;
+  justify-items: center;
+  gap: 12px;
+  border: 1px solid rgba(255, 255, 255, 0.58);
+  border-radius: 8px;
+  padding: 28px;
+  background: rgba(250, 252, 249, 0.96);
+  text-align: center;
+}
+
+.loading-panel svg {
+  width: 46px;
+  height: 46px;
+  border-radius: 8px;
+  padding: 10px;
+  color: #ffffff;
+  background: #164b38;
+}
+
+.loading-panel p {
+  margin: 0;
+  color: #60716a;
+}
+
+.loading-panel button {
+  min-height: 40px;
+  border: 0;
+  border-radius: 8px;
+  padding: 0 16px;
+  color: #ffffff;
+  background: #12825c;
+  font-weight: 900;
+}
+
 .sidebar {
   display: flex;
   flex-direction: column;

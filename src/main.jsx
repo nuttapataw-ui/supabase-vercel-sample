@@ -386,11 +386,13 @@ function App() {
     }
 
     const profileProjects = data?.project_data?.projects;
-    const nextProjects = Array.isArray(profileProjects) && profileProjects.length ? profileProjects : projects;
+    const localProjects = readProjects();
+    const fallbackProjects = localProjects.length ? localProjects : [starterProject];
+    const nextProjects = Array.isArray(profileProjects) && profileProjects.length ? profileProjects : fallbackProjects;
     setDisplayName(data?.display_name || user.email || "");
     setProjects(nextProjects);
     localStorage.setItem(projectStorageKey, JSON.stringify(nextProjects));
-    setSelectedProjectId(nextProjects[0]?.id || "");
+    setSelectedProjectId(nextProjects[0].id);
     cloudLoadedRef.current = true;
 
     if (!data) {
@@ -428,7 +430,18 @@ function App() {
   }
 
   if (!selectedProject || !projectDraft) {
-    return null;
+    return (
+      <main className="app-shell">
+        <section className="loading-panel">
+          <HardHat aria-hidden="true" />
+          <h1>ProjectTrack</h1>
+          <p>Loading your profile workspace...</p>
+          <button type="button" onClick={() => window.location.assign(window.location.origin)}>
+            Reload App
+          </button>
+        </section>
+      </main>
+    );
   }
 
   const completedTasks = selectedProject.tasks.filter((task) => task.isComplete).length;
