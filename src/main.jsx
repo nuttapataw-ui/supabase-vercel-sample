@@ -501,7 +501,12 @@ function App() {
               label="Decks Extracted"
               value={(selectedProject.pptxExtracts || []).length}
             />
-            <SummaryCard icon={<Upload />} label="Latest Update" value={selectedProject.lastUpdate || "No updates"} />
+            <SummaryCard
+              icon={<Upload />}
+              label="Latest Update"
+              value={selectedProject.lastUpdate || "No updates"}
+              wide
+            />
           </section>
 
           <nav className="view-tabs" aria-label="Project views">
@@ -567,9 +572,9 @@ function App() {
   );
 }
 
-function SummaryCard({ icon, label, value }) {
+function SummaryCard({ icon, label, value, wide = false }) {
   return (
-    <article className="summary-card">
+    <article className={`summary-card ${wide ? "wide-summary" : ""}`}>
       <div className="summary-icon">{icon}</div>
       <p>{label}</p>
       <strong>{value}</strong>

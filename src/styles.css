@@ -270,17 +270,24 @@ h2 {
 
 .summary-grid {
   display: grid;
-  grid-template-columns: repeat(5, minmax(0, 1fr));
+  grid-template-columns: repeat(4, minmax(150px, 1fr));
   gap: 14px;
   margin: 24px 0;
 }
 
 .summary-card {
+  display: grid;
+  align-content: start;
   min-height: 126px;
+  min-width: 0;
   border: 1px solid #dce4de;
   border-radius: 8px;
   padding: 18px;
   background: #ffffff;
+}
+
+.summary-card.wide-summary {
+  grid-column: span 2;
 }
 
 .summary-icon {
@@ -306,9 +313,21 @@ h2 {
 
 .summary-card strong {
   display: block;
-  overflow-wrap: anywhere;
+  max-width: 100%;
+  overflow: hidden;
+  overflow-wrap: normal;
+  text-overflow: ellipsis;
   font-size: 2.1rem;
   line-height: 1;
+}
+
+.summary-card.wide-summary strong {
+  display: -webkit-box;
+  font-size: 1.3rem;
+  line-height: 1.18;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 3;
+  white-space: normal;
 }
 
 .view-tabs {
@@ -702,6 +721,10 @@ textarea:focus {
   .upload-zone,
   .pptx-zone {
     grid-template-columns: 1fr;
+  }
+
+  .summary-card.wide-summary {
+    grid-column: auto;
   }
 
   .topbar {
