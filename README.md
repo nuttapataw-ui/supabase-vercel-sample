@@ -12,7 +12,7 @@ ProjectTrack is a Vite + React engineering project tracker deployed on Vercel.
 - Download or delete uploaded files
 - Read `.pptx` PowerPoint files and extract slide text plus basic table rows
 - Store data locally in the browser using `localStorage` and `IndexedDB`
-- Sign in with a Supabase profile to sync project data across devices
+- Sign in with email/password using Supabase Auth to sync project data across devices
 - Store uploaded files in Supabase Storage when signed in
 
 ## Important Storage Note
@@ -45,9 +45,11 @@ VITE_SUPABASE_ANON_KEY=your-anon-or-publishable-key
 ```
 
 7. Redeploy the Vercel project.
-8. Open the app and sign in from the Profile panel.
+8. Open the app and create an account or sign in from the Profile panel.
 
 After sign-in, project data saves to `user_profiles.project_data`, and uploaded files save to the private `engineering-files` Supabase Storage bucket.
+
+In Supabase **Authentication > Providers**, make sure the Email provider is enabled. If email confirmations are enabled, users may need to confirm their account before signing in.
 
 ## Run Locally
 

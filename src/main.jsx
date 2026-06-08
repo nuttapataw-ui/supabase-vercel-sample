@@ -80,6 +80,8 @@ function App() {
   const [activeView, setActiveView] = useState("overview");
   const [session, setSession] = useState(null);
   const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
+  const [authMode, setAuthMode] = useState("sign-in");
   const [displayName, setDisplayName] = useState("");
   const [cloudStatus, setCloudStatus] = useState(supabase ? "Cloud ready" : "Local only");
   const cloudSaveTimer = useRef(null);
@@ -352,17 +354,25 @@ function App() {
     return "";
   }
 
-  async function signIn(event) {
+  async function handlePasswordAuth(event) {
     event.preventDefault();
-    if (!supabase || !email.trim()) return;
+    if (!supabase || !email.trim() || !password) return;
 
-    setCloudStatus("Sending sign-in link");
-    const { error } = await supabase.auth.signInWithOtp({
-      email: email.trim(),
-      options: { emailRedirectTo: appUrl }
-    });
+    setCloudStatus(authMode === "sign-up" ? "Creating account" : "Signing in");
+    const authRequest =
+      authMode === "sign-up"
+        ? supabase.auth.signUp({
+            email: email.trim(),
+            password,
+            options: { emailRedirectTo: appUrl }
+          })
+        : supabase.auth.signInWithPassword({
+            email: email.trim(),
+            password
+          });
 
-    setCloudStatus(error ? error.message : "Check your email for the sign-in link");
+    const { error } = await authRequest;
+    setCloudStatus(error ? error.message : authMode === "sign-up" ? "Account created. Check email if confirmation is required." : "Signed in");
   }
 
   async function signOut() {
@@ -471,10 +481,14 @@ function App() {
             session={session}
             email={email}
             setEmail={setEmail}
+            password={password}
+            setPassword={setPassword}
+            authMode={authMode}
+            setAuthMode={setAuthMode}
             displayName={displayName}
             setDisplayName={setDisplayName}
             status={cloudStatus}
-            onSignIn={signIn}
+            onAuthSubmit={handlePasswordAuth}
             onSignOut={signOut}
             onSaveName={saveProfileName}
           />
@@ -601,10 +615,14 @@ function ProfilePanel({
   session,
   email,
   setEmail,
+  password,
+  setPassword,
+  authMode,
+  setAuthMode,
   displayName,
   setDisplayName,
   status,
-  onSignIn,
+  onAuthSubmit,
   onSignOut,
   onSaveName
 }) {
@@ -625,13 +643,29 @@ function ProfilePanel({
 
   if (!session) {
     return (
-      <form className="profile-panel" onSubmit={onSignIn}>
+      <form className="profile-panel" onSubmit={onAuthSubmit}>
         <div className="profile-heading">
           <Mail aria-hidden="true" />
           <div>
             <p>Profile</p>
-            <strong>Sign in to sync</strong>
+            <strong>{authMode === "sign-up" ? "Create profile" : "Sign in to sync"}</strong>
           </div>
+        </div>
+        <div className="auth-mode-toggle">
+          <button
+            className={authMode === "sign-in" ? "selected" : ""}
+            type="button"
+            onClick={() => setAuthMode("sign-in")}
+          >
+            Sign In
+          </button>
+          <button
+            className={authMode === "sign-up" ? "selected" : ""}
+            type="button"
+            onClick={() => setAuthMode("sign-up")}
+          >
+            Sign Up
+          </button>
         </div>
         <input
           type="email"
@@ -639,8 +673,15 @@ function ProfilePanel({
           onChange={(event) => setEmail(event.target.value)}
           placeholder="you@example.com"
         />
+        <input
+          type="password"
+          value={password}
+          onChange={(event) => setPassword(event.target.value)}
+          placeholder="Password"
+          minLength="6"
+        />
         <button className="profile-button" type="submit">
-          Send Link
+          {authMode === "sign-up" ? "Create Account" : "Sign In"}
         </button>
         <span className="cloud-status">{status}</span>
       </form>
