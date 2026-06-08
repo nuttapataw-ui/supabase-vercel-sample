@@ -25,6 +25,7 @@ import "./styles.css";
 
 const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
 const supabaseKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
+const appUrl = import.meta.env.VITE_APP_URL || window.location.origin;
 const cloudBucket = "engineering-files";
 const projectStorageKey = "engtrack.projects";
 const selectedProjectKey = "engtrack.selectedProject";
@@ -358,7 +359,7 @@ function App() {
     setCloudStatus("Sending sign-in link");
     const { error } = await supabase.auth.signInWithOtp({
       email: email.trim(),
-      options: { emailRedirectTo: window.location.origin }
+      options: { emailRedirectTo: appUrl }
     });
 
     setCloudStatus(error ? error.message : "Check your email for the sign-in link");
